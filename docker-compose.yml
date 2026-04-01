@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    hostname: postgres
+    environment:
+      POSTGRES_USER: amboras
+      POSTGRES_PASSWORD: amboras_dev
+      POSTGRES_DB: amboras_analytics
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U amboras -d amboras_analytics']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      amboras:
+        aliases:
+          - postgres
+
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      amboras:
+        aliases:
+          - redis
+
+  backend:
+    build: ./backend
+    ports:
+      - '3001:3001'
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: amboras
+      DATABASE_PASSWORD: amboras_dev
+      DATABASE_NAME: amboras_analytics
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-secret-key-change-in-production
+      BACKEND_PORT: 3001
+      FRONTEND_URL: http://localhost:3000
+      ENABLE_SIMULATOR: 'true'
+      SIMULATOR_EVENTS_PER_SECOND: '100'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - amboras
+
+  frontend:
+    build: ./frontend
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    depends_on:
+      - backend
+    networks:
+      - amboras
+
+volumes:
+  pgdata:
+
+networks:
+  amboras:
+    driver: bridge
